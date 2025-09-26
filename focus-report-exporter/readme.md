@@ -76,15 +76,15 @@ A seguir estão os arquivos que compõem o projeto. Apenas três são essenciais
 Verifique se todas as variáveis foram configuradas corretamente.
 
 ```BASH
-export OCI_USERNAME='igor.nicoli@gmail.com'
+export OCI_USERNAME='user.name@domain.com'
 export OCI_DOMAIN_NAME='Default'
 export FN_APP_NAME="FinOps"
 export FN_FUNC_NAME="focus-report-extractor"
 export OCI_REPO_NAME="${FN_APP_NAME,,}_${FN_FUNC_NAME}"
 export OCI_BUCKET_NAME_DESTINATION="FinOps-Billing-Report"
 export OCI_NAMESPACE=$(oci os ns get --raw-output --query 'data')
-export OCI_COMPARTMENT="ocid1.compartment.oc1..aaaaaaaa7svbe2mrmcrmuaurzwup6dhs3xoer6jolwkgeu7fl4wxlnezwwba"
-export OCI_SUBNET='ocid1.subnet.oc1.sa-saopaulo-1.aaaaaaaaurzsjuy6sl53cjqrj3hvfxh27utses6zar6s7wrw2rb4whphjuna'
+export OCI_COMPARTMENT="ocid1.compartment.oc1..aaaaaaaa7_____wba"
+export OCI_SUBNET='ocid1.subnet.oc1.sa-saopaulo-1.aaaaaaaau_____una'
 
 set|grep -E '^(FN_APP_NAME|FN_FUNC_NAME|OCI_REPO_NAME|OCI_NAMESPACE|OCI_COMPARTMENT|OCI_DOMAIN_NAME|OCI_USERNAME|OCI_REGION)'
 ```
