@@ -295,7 +295,7 @@ Para verificar o funcionamento da function, utilize o comando abaixo:
 fn invoke ${FN_APP_NAME} ${FN_FUNC_NAME}
 ```
 
-[!TIP]
+> [!NOTE]
 Após concluir o processo de criação com sucesso, **aguarde alguns minutos**. Essa pausa é crucial para garantir que o sistema carregue e atualize os *caches* de permissões, especialmente as novas políticas concedidas à *function*.
 
 ## Resource Scheduler
