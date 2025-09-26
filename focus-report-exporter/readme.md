@@ -1,6 +1,3 @@
-Cloud Advisor recommendations
-Oracle Support Rewards
-
 <h1> OCI Function: FinOps - Focus Report Extractor </h1>
 
 [View this README in English](./README_en.md)
