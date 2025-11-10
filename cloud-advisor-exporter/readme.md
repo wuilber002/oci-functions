@@ -143,10 +143,6 @@ export OCI_BUCKET_ROOT_PATH='Cloud-Advisor'
 export CLOUD_ADVISOR_MAPPING_FILE='cloud-advisor-mapping.json'
 export CLOUD_ADVISOR_MAPPING_FILE_PATH='Dictionaries'
 
-export OCI_USERNAME='igor.nicoli@gmail.com'
-export OCI_COMPARTMENT='ocid1.compartment.oc1..aaaaaaaa7svbe2mrmcrmuaurzwup6dhs3xoer6jolwkgeu7fl4wxlnezwwba'
-export OCI_SUBNET='ocid1.subnet.oc1.sa-saopaulo-1.aaaaaaaao6pdxdracwf42e22ryumuylaoyxnpwkosdxvqy6u4hlpcfzpq7xq'
-
 set|grep -E '^(FN_APP_NAME|FN_FUNC_NAME|FN_FUNC_TAG_VALUE|OCI_DOMAIN_NAME|OCI_USERNAME|OCI_BUCKET_NAME_DESTINATION|OCI_COMPARTMENT|OCI_SUBNET|OCI_REPO_NAME|OCI_NAMESPACE|OCI_BUCKET_ROOT_PATH|CLOUD_ADVISOR_MAPPING_FILE|CLOUD_ADVISOR_MAPPING_FILE_PATH|OCI_REGION|OCI_TENANCY)'
 ```
 
