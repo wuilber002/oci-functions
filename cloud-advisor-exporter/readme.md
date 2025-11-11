@@ -44,11 +44,11 @@ Este arquivo de mapeamento precisa ser **disponibilizado no mesmo *bucket*** uti
   - [Environment variables](#environment-variables)
 - [Work Directory](#work-directory)
 - [Clone the Git repository](#clone-the-git-repository)
-- [Function Application](#function-application)
-- [OCI Function: context](#oci-function-context)
 - [OCI Container Registry](#oci-container-registry)
 - [Bucket](#bucket)
-- [Function](#function)
+  - [OCI Function](#oci-function)
+  - [Application](#application)
+  - [Context](#context)
   - [Files](#files)
     - [requirements.txt](#requirementstxt)
     - [func.yaml](#funcyaml)
@@ -97,14 +97,15 @@ A seguir estão os arquivos que compõem o projeto. Apenas dois são essenciais;
 ├── cloud-advisor-mapping.json
 ├── func.py
 ├── readme.md
-└── readme_en-US
+└── readme_en-US.md
 ```
 
 | Item | Descrição |
 |------|-----------|
-|readme.md|Este arquivo de documentação e auxílio.|
-|**func.py**|O *script* em Python que será executado pela *function*.|
 |**cloud-advisor-mapping.json**|Arquivo de mapping (dicionário) para os nomes e descrições das recomendações e categorias do *Cloud Advisor*.|
+|**func.py**|O *script* em Python que será executado pela *function*.|
+|readme.md|Este arquivo de documentação e auxílio.|
+|readme_en-US.md|Versão em inglês deste arquivo de documentação e auxílio.|
 
 ## Cloud Shell
 
@@ -158,7 +159,7 @@ set|grep -E '^(FN_APP_NAME|FN_FUNC_NAME|FN_FUNC_TAG_VALUE|OCI_DOMAIN_NAME|OCI_US
 |**OCI_SUBNET**                     |OCID (*Oracle Cloud Identifier*) da ***subnet*** na qual a *function* será criada.|
 |**OCI_REPO_NAME**                  |Nome do repositório no **OCI Registry** para armazenar as *images* da *function*.|
 |**OCI_NAMESPACE**                  |Nome do *namespace* do **Object Storage** do Tenancy.|
-|**OCI_BUCKET_ROOT_PATH**           |Nome do **diretor raiz** do bucket de destino para os arquivos do Cloud Advisor.|
+|**OCI_BUCKET_ROOT_PATH**           |Nome do **diretor raiz** do bucket de destino para os arquivos extraidos pela **OCI Function**.|
 |**CLOUD_ADVISOR_MAPPING_FILE**     |Nome do **arquivo de mapping** (dicionário) do Cloud Advisor.|
 |**CLOUD_ADVISOR_MAPPING_FILE_PATH**|Caminho para o **arquivo de mapping** (dicionário) do Cloud Advisor.|
 
@@ -171,7 +172,7 @@ Além dessas, serão utilizadas outras variáveis que já são previamente defin
 
 ## Work Directory
 
-Vamos **criar um diretório** para organizar todos os nossos arquivos e, em seguida, iniciar a **criação dos nossos arquivos** e o *build* da nossa *function*.
+Vamos **criar um diretório de trabalho** para a organização de todos os nossos arquivos e, posteriormente, iniciar a **criação dos artefatos necessários** e o *build* da nossa *function*.
 
 ```BASH
 mkdir -p ~/oci-functions/${FN_FUNC_NAME,,}
@@ -180,45 +181,15 @@ cd ~/oci-functions/${FN_FUNC_NAME,,}
 
 ## Clone the Git repository
 
-Efetue o clone desse repositorio git ou disponibilize todos os arquivos mencionandos no topico [Project files](#project-files) em nosso diretorio de trabalho.
+Efetue o clone desse repositorio git e/ou disponibilize todos os arquivos mencionandos no topico [Project files](#project-files) em nosso diretorio de trabalho.
 
 ```BASH
 git clone https://github.com/wuilber002/oci-functions.git
 ```
 
-## Function Application
-
-Crie uma **FN Application** com a arquitetura x86\_64 para hospedar a *function*.  Se já possuir uma, *export* o OCID (*Oracle Cloud Identifier*) para a variável de ambiente ***FN_APP_OCID*** e o nome para ***FN_APP_NAME*** para facilitar o uso posterior.
-
-Para criar a *application*, utilize o comando abaixo, que já exporta o OCID (*Oracle Cloud Identifier*) para uma variável de ambiente.
-
-```BASH
-export FN_APP_OCID=$(oci fn application create \
---display-name ${FN_APP_NAME} \
---compartment-id ${OCI_COMPARTMENT} \
---subnet-ids "[\"${OCI_SUBNET}\"]" \
---shape "GENERIC_X86" \
---raw-output \
---query 'data.id')
-
-set | grep -E '^(FN_APP_OCID)'
-```
-
-## OCI Function: context
-
-É necessário realizar algumas **configurações de contexto** para o cliente `fn` do OCI Functions.
-
-```BASH
-fn use context ${OCI_REGION}
-fn update context oracle.compartment-id ${OCI_COMPARTMENT}
-fn update context registry ${OCI_REGION}.ocir.io/${OCI_NAMESPACE}/${OCI_REPO_NAME}
-fn update context oracle.image-compartment-id ${OCI_COMPARTMENT}
-fn list context
-```
-
 ## OCI Container Registry
 
-É fundamental utilizar um **Auth Token como senha** durante o processo de *login* no **OCI Container Registry**.
+É necessário utilizar um **Auth Token como senha** durante o processo de *login* no **OCI Container Registry**.
 
 Caso você não possua um *Auth Token* criado, gere um novo utilizando o seguinte comando:
 
@@ -243,7 +214,7 @@ docker login -u "${OCI_NAMESPACE}/${OCI_DOMAIN_NAME}/${OCI_USERNAME}" ${OCI_REGI
 
 Este *Bucket* receberá todos os arquivos extraidos do serviço **Cloud Advisor** para a *Tenancy*.
 
-Caso você já possua o *Bucket* criado, voce pode pular essa parte e export a variavel **OCI_BUCKET_NAME_DESTINATION** com o nome do seu bucket. Caso contrario, crie o bucket com o mando abaixo:
+Caso você já possua o *Bucket* criado, você pode pular essa parte e fazer o export da variável **OCI_BUCKET_NAME_DESTINATION** com o nome do seu bucket. Caso contrario, crie o bucket com o mando abaixo:
 
 ```BASH
 oci os bucket create --name ${OCI_BUCKET_NAME_DESTINATION} \
@@ -263,7 +234,37 @@ oci os object put \
 --name "${CLOUD_ADVISOR_MAPPING_FILE_PATH}/${CLOUD_ADVISOR_MAPPING_FILE}"
 ```
 
-## Function
+### OCI Function
+
+### Application
+
+Crie uma **FN Application** com a arquitetura x86\_64 para hospedar a *function*.  Se já possuir uma, *export* o OCID (*Oracle Cloud Identifier*) para a variável de ambiente ***FN_APP_OCID*** e o nome para ***FN_APP_NAME*** para facilitar o uso posterior.
+
+Para criar a *application*, utilize o comando abaixo, que já exporta o OCID (*Oracle Cloud Identifier*) para uma variável de ambiente.
+
+```BASH
+export FN_APP_OCID=$(oci fn application create \
+--display-name ${FN_APP_NAME} \
+--compartment-id ${OCI_COMPARTMENT} \
+--subnet-ids "[\"${OCI_SUBNET}\"]" \
+--shape "GENERIC_X86" \
+--raw-output \
+--query 'data.id')
+
+set | grep -E '^(FN_APP_OCID)'
+```
+
+### Context
+
+É necessário realizar algumas **configurações de contexto** para o cliente `fn` do OCI Functions.
+
+```BASH
+fn use context ${OCI_REGION}
+fn update context oracle.compartment-id ${OCI_COMPARTMENT}
+fn update context registry ${OCI_REGION}.ocir.io/${OCI_NAMESPACE}/${OCI_REPO_NAME}
+fn update context oracle.image-compartment-id ${OCI_COMPARTMENT}
+fn list context
+```
 
 ### Files
 
@@ -318,7 +319,7 @@ Para garantir a flexibilidade da solução, a *function* utilizará **variáveis
 
 #### func.py
 
-O arquivo `func.py` precisa ser enviado (via *upload*), se você não fez o clone do repositório, para o nosso **diretório de trabalho** (*work directory*).
+O arquivo `func.py` precisa ser enviado (via *upload*), se você não fez o clone do repositório para o nosso **diretório de trabalho** (*work directory*).
 
 ![Cloud Shell Upload Steps](images/oci-cloud-shell_upload.gif)
 
@@ -332,9 +333,9 @@ mv ~/func.py .
 
 O próximo comando executará as seguintes etapas:
 
-- Cria a *image* da *function* com Python e todos os módulos listados em `requirements.txt`.
-- Cria o repositório no **OCI Container Registry** para o *upload* da *image*.
-- Cria a *function* com as características definidas em `func.yaml` dentro da **Function Application**.
+- Cria a *image* da *function* com Python e todos os módulos listados em `requirements.txt`;
+- Cria o repositório no **OCI Container Registry** para o *upload* da *image*;
+- Cria a *function* com as características definidas em `func.yaml` dentro da **Function Application**;
 - Configura as variáveis de ambiente.
 
 ```BASH
@@ -423,13 +424,13 @@ O agendamento a ser criado será do tipo **dinâmico**, configurado para **uma e
 
 ### Critérios de Agendamento Dinâmico
 
-Um agendamento dinâmico (**Dynamic Schedule**) seleciona os recursos a serem executados no momento da invocação, baseando-se em critérios de filtro previamente definidos. Adotaremos os seguintes critérios para esta *function*:
+Um agendamento dinâmico (**Dynamic Schedule**) seleciona os recursos a serem executados no momento da invocação, baseando-se em critérios de filtro previamente definidos. Adotaremos os seguintes critérios:
 
 - **Compartment:** Residir no **Compartment** definido pela variável de ambiente `OCI_COMPARTMENT`.
 - **Free-form Tag:** Possuir a **Free-form Tag** com a chave e valor exatos: `FinOps: Scheduled-Function`.
 - **Tipo de Recurso:** Ser um recurso do tipo **Function** (OCI Function).
 
-Com base nos critérios listados, procederemos agora à criação do arquivo JSON de **filtro de recursos** (*Resource Filter*), que será utilizado para identificar os recursos que terão sua execução agendada.
+Com base nos critérios listados, vamos criaro o arquivo JSON de **filtro de recursos** (*Resource Filter*), que será utilizado para identificar os recursos que terão sua execução agendada.
 
 ```BASH
 cat <<EOF > /tmp/resource_scheduler-resource_filter.policy
