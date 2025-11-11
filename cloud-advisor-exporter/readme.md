@@ -4,7 +4,7 @@
 
 Este conjunto de arquivos contém uma ***Function*** em Python desenvolvida para automatizar o processo de *download* e *upload* das recomendações, categorias e ações recomendadas pelo **Cloud Advisor** da sua *Tenancy* OCI para um *bucket* dentro da mesma *tenancy*.
 
-<h2> Isenção de responsabilidade </h3>
+<h2>Isenção de responsabilidade</h3>
 
 Antes de prosseguir, é fundamental ter em mente que a utilização de quaisquer *scripts*, códigos ou comandos contidos neste repositório é de sua total responsabilidade. Os autores dos códigos não se responsabilizam por quaisquer ônus decorrentes do uso do conteúdo aqui disponibilizado.
 
@@ -12,13 +12,13 @@ Antes de prosseguir, é fundamental ter em mente que a utilização de quaisquer
 
 Este projeto **não é um aplicativo oficial da Oracle** e, portanto, não possui suporte formal. A Oracle não se responsabiliza por nenhum conteúdo aqui presente.
 
-<h2> Overview </h2>
+<h2>Visão geral</h2>
 
 O *script* em Python, projetado para ser executado no serviço *serverless* **OCI Functions**, realiza a extração de dados da API do OCI utilizando as seguintes chamadas:
 
-- [**`OCI Optimizer: list-categories`**](https://oracle-cloud-infrastructure-python-sdk.readthedocs.io/en/latest/api/optimizer/client/oci.optimizer.OptimizerClient.html#oci.optimizer.OptimizerClient.list_categories)
-- [**`OCI Optimizer: list-recommendations`**](https://oracle-cloud-infrastructure-python-sdk.readthedocs.io/en/latest/api/optimizer/client/oci.optimizer.OptimizerClient.html#oci.optimizer.OptimizerClient.list_recommendations)
-- [**`OCI Optimizer: list-resource-actions`**](https://oracle-cloud-infrastructure-python-sdk.readthedocs.io/en/latest/api/optimizer/client/oci.optimizer.OptimizerClient.html#oci.optimizer.OptimizerClient.list_resource_actions)
+- [**OCI Optimizer: `list-categories`**](https://oracle-cloud-infrastructure-python-sdk.readthedocs.io/en/latest/api/optimizer/client/oci.optimizer.OptimizerClient.html#oci.optimizer.OptimizerClient.list_categories)
+- [**OCI Optimizer: `list-recommendations`**](https://oracle-cloud-infrastructure-python-sdk.readthedocs.io/en/latest/api/optimizer/client/oci.optimizer.OptimizerClient.html#oci.optimizer.OptimizerClient.list_recommendations)
+- [**OCI Optimizer: `list-resource-actions`**](https://oracle-cloud-infrastructure-python-sdk.readthedocs.io/en/latest/api/optimizer/client/oci.optimizer.OptimizerClient.html#oci.optimizer.OptimizerClient.list_resource_actions)
 
 <h3> Data Mapping and Localization </h3>
 
@@ -33,43 +33,43 @@ Este arquivo de mapeamento precisa ser **disponibilizado no mesmo *bucket*** uti
 
 ![OCI Cloud Shell: Open](images/cloud-advisor-field-mapping.png)
 
-<h2>Index</h2>
+<h2>Índice</h2>
 
-- [Requirements](#requirements)
-  - [Permissions](#permissions)
-  - [Networking](#networking)
-- [Project files](#project-files)
+- [Requisitos](#requisitos)
+  - [Permissões](#permissões)
+  - [Redes](#redes)
+- [Arquivos do projeto](#arquivos-do-projeto)
 - [Cloud Shell](#cloud-shell)
-  - [Architecture X86\_64](#architecture-x86_64)
-  - [Environment variables](#environment-variables)
-- [Work Directory](#work-directory)
-- [Clone the Git repository](#clone-the-git-repository)
+  - [Arquitetura X86\_64](#arquitetura-x86_64)
+  - [Variáveis de ​​ambientais](#variáveis-de-ambientais)
+- [Diretório de Trabalho](#diretório-de-trabalho)
+- [Clone o repositório Git](#clone-o-repositório-git)
 - [OCI Container Registry](#oci-container-registry)
 - [Bucket](#bucket)
-  - [OCI Function](#oci-function)
-  - [Application](#application)
-  - [Context](#context)
-  - [Files](#files)
+- [OCI Function](#oci-function)
+  - [OCI Function: Application](#oci-function-application)
+  - [OCI Function: Context](#oci-function-context)
+  - [OCI Function: Arquivos](#oci-function-arquivos)
     - [requirements.txt](#requirementstxt)
     - [func.yaml](#funcyaml)
     - [func.py](#funcpy)
-  - [Build](#build)
-  - [Tagging](#tagging)
-  - [Dynamic Group for Function](#dynamic-group-for-function)
-  - [Policy for Function](#policy-for-function)
+  - [OCI Function: Build](#oci-function-build)
+  - [OCI Function: Tagging](#oci-function-tagging)
+  - [OCI Function: Dynamic Group](#oci-function-dynamic-group)
+  - [OCI Function: Policy](#oci-function-policy)
 - [Resource Scheduler](#resource-scheduler)
-  - [Critérios de Agendamento Dinâmico](#critérios-de-agendamento-dinâmico)
-  - [Dynamic Group for Resource Scheduler](#dynamic-group-for-resource-scheduler)
-  - [Policy for Resource Scheduler](#policy-for-resource-scheduler)
-  - [Using existing scheduling](#using-existing-scheduling)
+  - [Resource Scheduler: Critérios de Agendamento Dinâmico](#resource-scheduler-critérios-de-agendamento-dinâmico)
+  - [Resource Scheduler: Dynamic Group](#resource-scheduler-dynamic-group)
+  - [Resource Scheduler: Policy](#resource-scheduler-policy)
+  - [Resource Scheduler: Utilizando o agendamento existente](#resource-scheduler-utilizando-o-agendamento-existente)
 - [Testing](#testing)
 - [Logging](#logging)
 
-## Requirements
+## Requisitos
 
 Para dar continuidade a este procedimento, é necessário **cumprir os requisitos** a seguir:
 
-### Permissions
+### Permissões
 
 As permissões são divididas em dois grupos de ações:
 
@@ -84,11 +84,11 @@ As permissões são divididas em dois grupos de ações:
 - **Para Acesso a Recursos:**
   - Cloud Shell
 
-### Networking
+### Redes
 
 É mandatório que você possua uma **VCN** criada com uma **Subnet** que tenha endereços IP disponíveis para alocar a *Function*. Essa *Subnet* deve possuir **acesso à internet** ou ter um **Gateway de Serviços** ativo.
 
-## Project files
+## Arquivos do projeto
 
 A seguir estão os arquivos que compõem o projeto. Apenas dois são essenciais; o `readme.md` e `readme_en-US` podem ser ignorado no processo de implantação.
 
@@ -113,7 +113,7 @@ Para iniciar a criação e a configuração dos recursos, **abra o Cloud Shell**
 
 ![OCI Cloud Shell: Open](images/oci-cloud-shell_open.gif)
 
-### Architecture X86\_64
+### Arquitetura X86\_64
 
 Para o correto funcionamento dos recursos envolvidos neste procedimento, utilizaremos a **arquitetura x86\_64** como padrão.
 
@@ -125,7 +125,7 @@ Para o correto funcionamento dos recursos envolvidos neste procedimento, utiliza
 [ "$(uname -m)" == "x86_64" ] && echo "$(uname -m):OK" || echo "$(uname -m):ERRO"
 ```
 
-### Environment variables
+### Variáveis de ​​ambientais
 
 Antes de criar as variáveis de ambiente, verifique se todas foram configuradas corretamente.
 
@@ -170,7 +170,7 @@ Além dessas, serão utilizadas outras variáveis que já são previamente defin
 | **OCI_REGION** |Nome completo da região na qual o *Cloud Shell* está conectado.|
 | **OCI_TENANCY** |OCID (*Oracle Cloud Identifier*) do *Tenancy* à qual estamos logados no *Cloud Shell*.|
 
-## Work Directory
+## Diretório de Trabalho
 
 Vamos **criar um diretório de trabalho** para a organização de todos os nossos arquivos e, posteriormente, iniciar a **criação dos artefatos necessários** e o *build* da nossa *function*.
 
@@ -179,9 +179,9 @@ mkdir -p ~/oci-functions/${FN_FUNC_NAME,,}
 cd ~/oci-functions/${FN_FUNC_NAME,,}
 ```
 
-## Clone the Git repository
+## Clone o repositório Git
 
-Efetue o clone desse repositorio git e/ou disponibilize todos os arquivos mencionandos no topico [Project files](#project-files) em nosso diretorio de trabalho.
+Efetue o clone desse repositorio git e/ou disponibilize todos os arquivos mencionandos no topico [Arquivos do projeto](#arquivos-do-projeto) em nosso diretorio de trabalho.
 
 ```BASH
 git clone https://github.com/wuilber002/oci-functions.git
@@ -234,9 +234,9 @@ oci os object put \
 --name "${CLOUD_ADVISOR_MAPPING_FILE_PATH}/${CLOUD_ADVISOR_MAPPING_FILE}"
 ```
 
-### OCI Function
+## OCI Function
 
-### Application
+### OCI Function: Application
 
 Crie uma **FN Application** com a arquitetura x86\_64 para hospedar a *function*.  Se já possuir uma, *export* o OCID (*Oracle Cloud Identifier*) para a variável de ambiente ***FN_APP_OCID*** e o nome para ***FN_APP_NAME*** para facilitar o uso posterior.
 
@@ -254,7 +254,7 @@ export FN_APP_OCID=$(oci fn application create \
 set | grep -E '^(FN_APP_OCID)'
 ```
 
-### Context
+### OCI Function: Context
 
 É necessário realizar algumas **configurações de contexto** para o cliente `fn` do OCI Functions.
 
@@ -266,7 +266,7 @@ fn update context oracle.image-compartment-id ${OCI_COMPARTMENT}
 fn list context
 ```
 
-### Files
+### OCI Function: Arquivos
 
 Você precisar ter os arquivos abaixo em seu diretório de trabalho no Cloud Shell.
 
@@ -329,7 +329,7 @@ Após realizar o upload utilizando o botão no canto superior direito, mova o ar
 mv ~/func.py .
 ```
 
-### Build
+### OCI Function: Build
 
 O próximo comando executará as seguintes etapas:
 
@@ -355,7 +355,7 @@ export FN_FUNC_OCID=$(oci fn function list \
 set | grep -E '^(FN_FUNC_OCID)'
 ```
 
-### Tagging
+### OCI Function: Tagging
 
 Para que o serviço **Resource Scheduler** consiga identificar e selecionar o recurso correto para execução agendada, é necessário **definir a Free-form Tag** específica na *function* criada.
 
@@ -370,7 +370,7 @@ oci fn function update \
 --freeform-tags "{\"${FN_APP_NAME}\": \"${FN_FUNC_TAG_VALUE}\"}"
 ```
 
-### Dynamic Group for Function
+### OCI Function: Dynamic Group
 
 Para **conceder as permissões** necessárias para a *function* acessar o serviço do *Cloud Advisor* e o *bucket* de destino, é fundamental criar um **Grupo Dinâmico (Dynamic Group)**, conforme o comando abaixo:
 
@@ -386,7 +386,7 @@ oci iam dynamic-group create \
 > [!NOTE]
 A **`matching-rule`** deste **Grupo Dinâmico** selecionará exclusivamente nossa *function*, independentemente do *compartment* de criação.
 
-### Policy for Function
+### OCI Function: Policy
 
 Esta política de acesso concederá à *function* a liberação para consultar a API do **Cloud Advisor** e o *bucket* de destino, utilizando o grupo dinâmico criado.
 
@@ -412,7 +412,7 @@ oci iam policy create \
 Para a execução automatizada, utilizaremos o serviço PaaS de **Agendamento (Resource Scheduler)** do OCI.
 
 > [!NOTE]
-Caso haja um agendamento pré-existente que se deseja reutilizar, por favor, avance para o tópico: [Using existing scheduling](#using-existing-scheduling)
+Caso haja um agendamento pré-existente que se deseja reutilizar, por favor, avance para o tópico: [Resource Scheduler: Utilizando o agendamento existente](#resource-scheduler-utilizando-o-agendamento-existente)
 
 ---
 
@@ -422,7 +422,7 @@ O agendamento a ser criado será do tipo **dinâmico**, configurado para **uma e
 
 É fundamental observar que o agendamento é parametrizado no fuso horário **UTC** (*Coordinated Universal Time*). Para regiões com deslocamento (ex: **-3 horas** em relação ao UTC, como o fuso horário de São Paulo, Brasil), os horários de execução devem ser ajustados conforme necessário.
 
-### Critérios de Agendamento Dinâmico
+### Resource Scheduler: Critérios de Agendamento Dinâmico
 
 Um agendamento dinâmico (**Dynamic Schedule**) seleciona os recursos a serem executados no momento da invocação, baseando-se em critérios de filtro previamente definidos. Adotaremos os seguintes critérios:
 
@@ -479,7 +479,7 @@ export RESOURCE_SCHEDULER_OCID=$(oci resource-scheduler schedule create \
 set | grep -E '^(RESOURCE_SCHEDULER_OCID)'
 ```
 
-### Dynamic Group for Resource Scheduler
+### Resource Scheduler: Dynamic Group
 
 De forma análoga à *Function*, é necessário criar um **Grupo Dinâmico (Dynamic Group)** específico para o nosso agendamento, conforme o comando abaixo:
 
@@ -495,7 +495,7 @@ oci iam dynamic-group create \
 > [!NOTE]
 A **matching-rule** deste *Dynamic Group* selecionará exclusivamente o nosso agendamento, independentemente do compartment onde ela foi criada.
 
-### Policy for Resource Scheduler
+### Resource Scheduler: Policy
 
 Esta política de acesso concederá permissão ao agendamento para **invocar a nossa *function***, utilizando o grupo dinâmico que será criado.
 
@@ -510,7 +510,7 @@ oci iam policy create \
 > [!IMPORTANT]
 A política de acesso será criada no mesmo *compartment* de todos os demais recursos, conforme definido pela variável `OCI_COMPARTMENT`.
 
-### Using existing scheduling
+### Resource Scheduler: Utilizando o agendamento existente
 
 Se você criou um agendamento seguindo qualquer um dos procedimentos deste projeto do GitHub, **nenhuma ação adicional é necessária** para que esta *function* seja executada. O agendamento criado no **Resource Scheduler** é configurado como **dinâmico** e executará todas as *functions* que atendam aos seguintes critérios:
 
