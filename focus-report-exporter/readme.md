@@ -2,7 +2,7 @@
 
 [View this README in English](./readme_en-US.md) <span>&#127482;&#127480;</span>
 
-Este conjunto de arquivos contém uma ***Function*** em Python desenvolvida para automatizar o processo de *download* e *upload* dos relatórios no padrão [**FOCUS**](https://focus.finops.org/) da sua *Tenancy* OCI para um *bucket* dentro da mesma *tenancy*.
+Este conjunto de arquivos contém uma ***Function*** em Python desenvolvida para sincronizar relatórios no padrão [**FOCUS**](https://focus.finops.org/) da sua *Tenancy* OCI para um *bucket* dentro da mesma *tenancy*. A transferência é uma cópia direta entre buckets pelo Object Storage; os arquivos não são baixados para o ambiente da Function.
 
 <h2> Isenção de responsabilidade </h2>
 
@@ -14,7 +14,7 @@ Este projeto **não é um aplicativo oficial da Oracle** e, portanto, não possu
 
 <h2> Visão geral </h2>
 
-O *script* em Python, desenvolvido para execução no serviço *serverless* **OCI Functions**, efetua o *download* dos relatórios no formato **FOCUS** diretamente do *bucket* público da OCI. O processo abrange a coleta de todos os arquivos disponíveis e realiza o *upload* subsequente de todos os arquivos que nao estiverem presentes no *bucket* de destino.
+O *script* em Python, desenvolvido para execução no serviço *serverless* **OCI Functions**, lista os relatórios **FOCUS** no *bucket* público gerenciado pela OCI e usa cópias assíncronas do Object Storage para criar ou atualizar somente os objetos necessários no *bucket* de destino.
 
 A estrutura de armazenamento no destino replica a hierarquia da origem: **Ano/Mês/Dia**.
 
@@ -23,6 +23,10 @@ Toda essa operação é orquestrada através de chamadas diretas à API do OCI, 
 - [**Object Storage**: `get_namespace`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html#oci.object_storage.ObjectStorageClient.get_namespace)
 - [**Object Storage**: `list_objects`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html#oci.object_storage.ObjectStorageClient.list_objects)
 - [**Object Storage**: `copy_object`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html#oci.object_storage.ObjectStorageClient.copy_object)
+- [**Object Storage**: `put_object`, `head_object` e `delete_object`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html) para o lock de execução
+- [**Object Storage**: `get_work_request`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html#oci.object_storage.ObjectStorageClient.get_work_request) para acompanhar as cópias submetidas
+
+Para atualizar uma Function já implantada, consulte o [procedimento de atualização](./fn_update.md).
 
 <h2>Índice</h2>
 
@@ -80,6 +84,32 @@ As permissões são divididas em dois grupos de ações:
 
 É mandatório que você possua uma **VCN** criada com uma **Subnet** que tenha endereços IP disponíveis para alocar a *Function*. Essa *Subnet* deve possuir **acesso à internet** ou ter um **Gateway de Serviços** ativo.
 
+<h2>Fluxo de execução</h2>
+
+```mermaid
+flowchart TD
+    A[Invocação agendada ou manual] --> B[Valida configuração e define a região]
+    B --> C[Autentica com Resource Principal]
+    C --> D[Consulta namespace do destino e cria lock]
+    D -->|Lock já ativo| E[Retorna HTTP 409]
+    D -->|Lock obtido| F[Lista origem e destino paginados]
+    F --> G[Merge por caminho relativo Ano/Mês/Dia/arquivo]
+    G --> H{MD5 e tamanho iguais?}
+    H -->|Sim| I[Marca como same]
+    H -->|Não| J[Submete cópia com pré-condições por ETag]
+    I --> K[Conclui o merge]
+    J --> K
+    K --> L[Aguarda e consulta work requests]
+    L --> M[Registra métricas, remove lock e retorna JSON]
+```
+
+1. A Function lê `OCI_TENANCY_OCID`, `OCI_BUCKET_DESTINATION` e `OCI_BUCKET_ROOT_PATH`. A região de destino é `OCI_BUCKET_DESTINATION_REGION`, quando configurada; caso contrário, usa automaticamente `OCI_RESOURCE_PRINCIPAL_REGION`.
+2. Com o Resource Principal, consulta uma vez o namespace do destino e cria `PREFIXO/.focus-report-exporter.lock`. Uma execução concorrente recebe HTTP `409`; um lock abandonado expira após 15 minutos.
+3. A origem fixa é o namespace público `bling`, bucket igual ao OCID da tenancy e prefixo `FOCUS Reports/`. O destino usa o bucket e o prefixo configurados, normalmente `FOCUS-Reports/`. Assim, `FOCUS Reports/2026/07/26/arquivo.csv.gz` é comparado com `FOCUS-Reports/2026/07/26/arquivo.csv.gz`.
+4. As duas listagens são paginadas e comparadas em ordem lexicográfica pelo caminho relativo. As páginas não precisam estar alinhadas e o código mantém apenas o objeto atual do destino em memória. A origem é listada integralmente para garantir a sincronização de todos os relatórios publicados.
+5. Objetos com o mesmo MD5 e tamanho não são copiados. Para objetos ausentes ou divergentes, a cópia é submetida com ETag da origem e, quando já existe destino, com ETag do destino. Isso evita sobrescrever mudanças concorrentes.
+6. Depois de submeter todas as cópias, a Function aguarda 5 segundos e consulta os *work requests* a cada 2 segundos, por no máximo 120 segundos. Ao final, registra as métricas, libera o lock e retorna o resultado em JSON.
+
 ## Arquivos do projeto
 
 A seguir estão os arquivos que compõem o projeto. Apenas um arquivo é essencial; o `readme.md` e `readme_en-US.md` podem ser ignorados durante o processo de implantação.
@@ -87,13 +117,19 @@ A seguir estão os arquivos que compõem o projeto. Apenas um arquivo é essenci
 ```BASH
 .
 ├── func.py
+├── test_func.py
+├── fn_update.md
+├── fn_update_en-US.md
 ├── readme.md
 └── readme_en-US.md
 ```
 
-| Item | Descrição |
-|------|-----------|
+|Item|Descrição|
+|----|---------|
 |**func.py**|O *script* em Python que será executado pela *function*.|
+|**test_func.py**|Testes unitários para validar a lógica da Function antes do *deploy*. Não é executado pela Function em produção.|
+|fn_update.md|Procedimento para atualizar uma Function existente em português.|
+|fn_update_en-US.md|Versão em inglês do procedimento de atualização.|
 |readme.md|Este arquivo de documentação e auxílio.|
 |readme_en-US.md|Versão em inglês deste arquivo de documentação e auxílio.|
 
@@ -124,7 +160,6 @@ export FN_APP_NAME="FinOps"
 export FN_FUNC_NAME="Focus-Report-Extractor"
 export FN_FUNC_TAG_VALUE='Scheduled-Function'
 export OCI_DOMAIN_NAME='Default'
-export OCI_USERNAME='user.name@domain.com'
 export OCI_BUCKET_NAME_DESTINATION="FinOps-Billing-Report"
 export OCI_COMPARTMENT="ocid1.compartment.oc1..aaaaaaaa7_____1604"
 export OCI_SUBNET='ocid1.subnet.oc1.<region>.aaaaaaaau_____1604'
@@ -132,29 +167,34 @@ export OCI_REPO_NAME="${FN_APP_NAME,,}_${FN_FUNC_NAME,,}"
 export OCI_NAMESPACE=$(oci os ns get --raw-output --query 'data')
 export OCI_BUCKET_ROOT_PATH='FOCUS-Reports'
 
+export OCI_USERNAME=$(oci iam user get \
+  --user-id "${OCI_CS_USER_OCID}" \
+  --query 'data.name' \
+  --raw-output)
+
 set|grep -E '^(FN_APP_NAME|FN_FUNC_NAME|FN_FUNC_TAG_VALUE|OCI_DOMAIN_NAME|OCI_USERNAME|OCI_BUCKET_NAME_DESTINATION|OCI_COMPARTMENT|OCI_SUBNET|OCI_REPO_NAME|OCI_NAMESPACE|OCI_BUCKET_ROOT_PATH|OCI_REGION|OCI_TENANCY)'
 ```
 
-| Variavel | Descricao |
+|Variavel|Descricao|
 |-|-|
-|**FN_APP_NAME**                    |Nome da Application onde as functions serão criadas.|
-|**FN_FUNC_NAME**                   |Nome da **OCI Function**.|
-|**FN_FUNC_TAG_VALUE**              |Valor utilizado para identificar a function que será executada pelo *Resource Scheduler*. A Key da *free-form Tag* sera o nome da Application da Function, definida na variável **FN_APP_NAME**.|
-|**OCI_DOMAIN_NAME**                |Nome do domínio no qual o usuário utilizado foi criado.|
-|**OCI_USERNAME**                   |Nome do usuário a ser utilizado para a autenticação no **OCI Registry**. Este usuário será utilizado apenas durante o processo de configuração.|
-|**OCI_BUCKET_NAME_DESTINATION**    |Nome do **Bucket** que será utilizado para armazenar os arquivos extraidos pela **OCI Function**.|
-|**OCI_COMPARTMENT**                |OCID (*Oracle Cloud Identifier*) do ***compartment*** onde todos os recursos (Function Application, OCI Function, OCI Registry, etc.) serão criados.|
-|**OCI_SUBNET**                     |OCID (*Oracle Cloud Identifier*) da ***subnet*** na qual a *function* será criada.|
-|**OCI_REPO_NAME**                  |Nome do repositório no **OCI Registry** para armazenar as *images* da *function*.|
-|**OCI_NAMESPACE**                  |Nome do *namespace* do **Object Storage** do Tenancy.|
-|**OCI_BUCKET_ROOT_PATH**           |Nome do **diretor raiz** do bucket de destino para os arquivos extraidos pela **OCI Function**.|
+|**FN_APP_NAME**|Nome da Application onde as functions serão criadas.|
+|**FN_FUNC_NAME**|Nome da **OCI Function**.|
+|**FN_FUNC_TAG_VALUE**|Valor utilizado para identificar a function que será executada pelo *Resource Scheduler*. A Key da *free-form Tag* sera o nome da Application da Function, definida na variável **FN_APP_NAME**.|
+|**OCI_DOMAIN_NAME**|Nome do domínio no qual o usuário utilizado foi criado.|
+|**OCI_USERNAME**|Nome do usuário a ser utilizado para a autenticação no **OCI Registry**. Este usuário será utilizado apenas durante o processo de configuração.|
+|**OCI_BUCKET_NAME_DESTINATION**|Nome do **Bucket** que será utilizado para armazenar os arquivos extraidos pela **OCI Function**.|
+|**OCI_COMPARTMENT**|OCID (*Oracle Cloud Identifier*) do ***compartment*** onde todos os recursos (Function Application, OCI Function, OCI Registry, etc.) serão criados.|
+|**OCI_SUBNET**|OCID (*Oracle Cloud Identifier*) da ***subnet*** na qual a *function* será criada.|
+|**OCI_REPO_NAME**|Nome do repositório no **OCI Registry** para armazenar as *images* da *function*.|
+|**OCI_NAMESPACE**|Nome do *namespace* do **Object Storage** do Tenancy.|
+|**OCI_BUCKET_ROOT_PATH**|Nome do **diretor raiz** do bucket de destino para os arquivos extraidos pela **OCI Function**.|
 
 Além dessas, serão utilizadas outras variáveis que já são previamente definidas no OCI Cloud Shell:
 
 | Variavel | Descricao |
-|-|-|
-| **OCI_REGION** |Nome completo da região na qual o OCI Cloud Shell está conectado.|
-| **OCI_TENANCY** |OCID (*Oracle Cloud Identifier*) do OCI Tenancy à qual estamos logados no OCI Cloud Shell.|
+|----------|-----------|
+|**OCI_REGION**|Nome completo da região na qual o OCI Cloud Shell está conectado.|
+|**OCI_TENANCY**|OCID (*Oracle Cloud Identifier*) do OCI Tenancy à qual estamos logados no OCI Cloud Shell.|
 
 ## Diretório de Trabalho
 
@@ -279,16 +319,25 @@ config:
  OCI_BUCKET_DESTINATION: ${OCI_BUCKET_NAME_DESTINATION}
  OCI_TENANCY_OCID: ${OCI_TENANCY}
  OCI_BUCKET_ROOT_PATH: ${OCI_BUCKET_ROOT_PATH}
+ # Opcional: use somente se o bucket de destino estiver em outra região.
+ # OCI_BUCKET_DESTINATION_REGION: us-ashburn-1
 EOF
 ```
 
 Para garantir a flexibilidade da solução, a *function* utilizará **variáveis** para receber dados que podem variar em cada *tenancy*. Abaixo a descrição de cada uma delas:
 
-| Variavel | Descrição          |
-|----------|--------------------|
-|OCI_BUCKET_DESTINATION         |Nome do *Bucket* que será utilizado para **armazenar os arquivos extraídos pela OCI Function**.|
-|OCI_TENANCY_OCID               |O **OCID** (*Oracle Cloud Identifier*) da *Tenancy*.|
-|OCI_BUCKET_ROOT_PATH           |Nome da pasta "raiz" localizada no "Bucket" que ira receber os arquivos extraídos pela OCI Function.|
+|Variavel|Descrição|
+|--------|---------|
+|OCI_BUCKET_DESTINATION|Nome do *Bucket* que será utilizado para **armazenar os arquivos extraídos pela OCI Function**.|
+|OCI_TENANCY_OCID|O **OCID** (*Oracle Cloud Identifier*) da *Tenancy*.|
+|OCI_BUCKET_ROOT_PATH|Nome da pasta "raiz" localizada no "Bucket" que ira receber os arquivos extraídos pela OCI Function.|
+|OCI_BUCKET_DESTINATION_REGION|Opcional. Região do bucket de destino para cópias entre regiões. Se ausente, a Function usa automaticamente a região em que está em execução (`OCI_RESOURCE_PRINCIPAL_REGION`).|
+
+> [!NOTE]
+> A Function cria temporariamente o objeto `.focus-report-exporter.lock` dentro da pasta raiz configurada no bucket de destino. Ele evita cópias duplicadas quando há invocações concorrentes e é considerado expirado após 15 minutos caso uma execução seja interrompida.
+
+> [!NOTE]
+> A origem é listada integralmente para garantir a sincronização. Origem e destino são processados página a página; durante o merge, a Function retém no máximo o objeto atual do destino, e não um inventário completo do bucket.
 
 #### func.py
 
@@ -303,6 +352,14 @@ mv ~/func.py .
 ```
 
 ### OCI Function: Build
+
+Antes do *deploy*, valide a integridade do código e dos testes unitários. O comando não requer credenciais OCI nem acessa buckets:
+
+```BASH
+python -m unittest -v
+```
+
+O resultado esperado é `OK`. Corrija qualquer falha antes de continuar o processo de publicação.
 
 O próximo comando executará as seguintes etapas:
 
@@ -516,12 +573,23 @@ fn invoke ${FN_APP_NAME} ${FN_FUNC_NAME,,}
 
 Este comando **invocará a *function*** e retornará os dados de execução. O resultado esperado é semelhante a este:
 
+HTTP `200` indica que a Function concluiu o seu fluxo; para confirmar sincronização integral e verificável, confira no JSON que `erro`, `pending`, `unknown`, `conflict` e `metadata_incomplete` estão em `0`. Erros de configuração retornam `400`, uma execução já em andamento retorna `409` e falhas de comunicação com a OCI retornam `502` ou `503`.
+
 ```JSON
 {
   "time": 0.7955700970001089,
   "orig": 1604,
   "dest": 1604,
   "copy": 0,
+  "update": 0,
+  "same": 1604,
+  "pending": 0,
+  "unknown": 0,
+  "conflict": 0,
+  "metadata_incomplete": 0,
+  "source_pages": 2,
+  "destination_pages": 5,
+  "destination_discarded": 3000,
   "erro": 0
 }
 ```
@@ -532,6 +600,15 @@ Este comando **invocará a *function*** e retornará os dados de execução. O r
 |orig|**Quantidade de arquivos** encontrados na origem.|
 |dest|**Quantidade de arquivos** já existentes no *bucket* de destino.|
 |copy|**Quantidade de arquivos novos** copiados com sucesso para o *bucket* de destino.|
+|update|**Quantidade de arquivos existentes** que foram copiados novamente porque MD5 ou tamanho diferiam da origem.|
+|same|**Quantidade de arquivos** já sincronizados, com MD5 e tamanho iguais aos da origem.|
+|pending|**Quantidade de cópias** ainda em processamento após o limite de espera.|
+|unknown|**Quantidade de cópias** cujo estado não pôde ser consultado; elas serão verificadas novamente na próxima execução.|
+|conflict|**Quantidade de cópias** canceladas por alteração concorrente detectada por ETag.|
+|metadata_incomplete|**Quantidade de arquivos** sem MD5 disponível para comparação completa.|
+|source_pages|**Quantidade de páginas** lidas na listagem da origem.|
+|destination_pages|**Quantidade de páginas** lidas na listagem do destino.|
+|destination_discarded|**Quantidade de objetos históricos do destino** descartados durante o merge por não existirem na origem.|
 |erro|**Quantidade de arquivos** que apresentaram erro durante a cópia para o *bucket* de destino.|
 
 ## Logging

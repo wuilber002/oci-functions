@@ -2,7 +2,7 @@
 
 [Veja esse README em Portugues](./readme.md) <span>&#x1f1e7;&#x1f1f7;</span>
 
-This set of files contains a ***Function*** in Python designed to automate the process of *downloading* and *uploading* reports in the [**FOCUS**](https://focus.finops.org/) standard from your *Tenancy* OCI to a *bucket* within the same *tenancy*.
+This set of files contains a Python ***Function*** designed to synchronize [**FOCUS**](https://focus.finops.org/) reports from your OCI *tenancy* to a *bucket* in the same *tenancy*. Transfers are direct Object Storage bucket-to-bucket copies; files are not downloaded into the Function environment.
 
 <h2> Disclaimer </h2>
 
@@ -14,7 +14,7 @@ This project is **not an official Oracle application** and therefore has no form
 
 <h2>Overview</h2>
 
-The *script* in Python, developed to run on the *serverless* **OCI Functions** service, *downloads* the reports in **FOCUS** format directly from OCI's public *bucket*. The process includes the collection of all available files and the subsequent *upload* of all files that are not present in the destination *bucket*.
+The Python *script*, designed to run on the **OCI Functions** serverless service, lists FOCUS reports in OCI's managed public bucket and uses asynchronous Object Storage copies to create or update only the required objects in the destination bucket.
 
 The storage structure at the destination replicates the hierarchy at the source: **Year/Month/Day**.
 
@@ -23,6 +23,10 @@ This entire operation is orchestrated via direct calls to the OCI API, as detail
 - [**Object Storage**: `get_namespace`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html#oci.object_storage.ObjectStorageClient.get_namespace)
 - [**Object Storage**: `list_objects`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html#oci.object_storage.ObjectStorageClient.list_objects)
 - [**Object Storage**: `copy_object`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html#oci.object_storage.ObjectStorageClient.copy_object)
+- [**Object Storage**: `put_object`, `head_object`, and `delete_object`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html) for the execution lock
+- [**Object Storage**: `get_work_request`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html#oci.object_storage.ObjectStorageClient.get_work_request) to track submitted copies
+
+To update an already deployed Function, see the [update procedure](./fn_update_en-US.md).
 
 <h2>Index</h2>
 
@@ -80,6 +84,32 @@ Permissions are divided into two groups of actions:
 
 It is mandatory that you have a **VCN** created with a **Subnet** that has IP addresses available to allocate the *Function*. This Subnet must have Internet access or have an active Service Gateway.
 
+<h2>Execution flow</h2>
+
+```mermaid
+flowchart TD
+    A[Scheduled or manual invocation] --> B[Validate configuration and resolve region]
+    B --> C[Authenticate with Resource Principal]
+    C --> D[Get destination namespace and create lock]
+    D -->|Lock is active| E[Return HTTP 409]
+    D -->|Lock acquired| F[List paginated source and destination]
+    F --> G[Merge by relative Year/Month/Day/file path]
+    G --> H{Same MD5 and size?}
+    H -->|Yes| I[Mark as same]
+    H -->|No| J[Submit copy with ETag preconditions]
+    I --> K[Finish merge]
+    J --> K
+    K --> L[Wait for and query work requests]
+    L --> M[Log metrics, release lock, return JSON]
+```
+
+1. The Function reads `OCI_TENANCY_OCID`, `OCI_BUCKET_DESTINATION`, and `OCI_BUCKET_ROOT_PATH`. It uses `OCI_BUCKET_DESTINATION_REGION` when configured; otherwise it automatically uses `OCI_RESOURCE_PRINCIPAL_REGION`.
+2. With the Resource Principal, it gets the destination namespace once and creates `PREFIX/.focus-report-exporter.lock`. A concurrent invocation receives HTTP `409`; an abandoned lock expires after 15 minutes.
+3. The fixed source is public namespace `bling`, a bucket named after the tenancy OCID, and prefix `FOCUS Reports/`. The destination uses the configured bucket and prefix, usually `FOCUS-Reports/`. Therefore, `FOCUS Reports/2026/07/26/file.csv.gz` is compared with `FOCUS-Reports/2026/07/26/file.csv.gz`.
+4. Both listings are paginated and compared in lexicographic order by relative path. Their pages do not need to align, and the code retains only the current destination object in memory. The source is listed in full to ensure all published reports are synchronized.
+5. Objects with the same MD5 and size are not copied. Missing or divergent objects are submitted with the source ETag and, when a destination object exists, its destination ETag. This avoids overwriting concurrent changes.
+6. After submitting every copy, the Function waits 5 seconds and queries work requests every 2 seconds for up to 120 seconds. It then logs the metrics, releases the lock, and returns the result as JSON.
+
 ## Project files
 
 The following are the files that make up the project. Only one file is essential; `readme.md` and `readme_en-US.md` can be ignored during the deployment process.
@@ -87,6 +117,9 @@ The following are the files that make up the project. Only one file is essential
 ```BASH
 .
 ├── func.py
+├── test_func.py
+├── fn_update.md
+├── fn_update_en-US.md
 ├── readme.md
 └── readme_en-US.md
 ```
@@ -94,6 +127,9 @@ The following are the files that make up the project. Only one file is essential
 | Item | Descrição |
 |------|-----------|
 |**func.py**    |The Python *script* that will be executed by the *function*.|
+|**test_func.py**|Unit tests that validate the Function logic before deployment. It is not executed by the production Function.|
+|fn_update.md|Portuguese procedure for updating an existing Function.|
+|fn_update_en-US.md|English version of the update procedure.|
 |readme.md      |This documentation and help file.|
 |readme_en-US.md|English version of this documentation and help file.|
 
@@ -124,13 +160,17 @@ export FN_APP_NAME="FinOps"
 export FN_FUNC_NAME="Focus-Report-Extractor"
 export FN_FUNC_TAG_VALUE='Scheduled-Function'
 export OCI_DOMAIN_NAME='Default'
-export OCI_USERNAME='user.name@domain.com'
 export OCI_BUCKET_NAME_DESTINATION="FinOps-Billing-Report"
 export OCI_COMPARTMENT="ocid1.compartment.oc1..aaaaaaaa7_____1604"
 export OCI_SUBNET='ocid1.subnet.oc1.<region>.aaaaaaaau_____1604'
 export OCI_REPO_NAME="${FN_APP_NAME,,}_${FN_FUNC_NAME,,}"
 export OCI_NAMESPACE=$(oci os ns get --raw-output --query 'data')
 export OCI_BUCKET_ROOT_PATH='FOCUS-Reports'
+
+export OCI_USERNAME=$(oci iam user get \
+  --user-id "${OCI_CS_USER_OCID}" \
+  --query 'data.name' \
+  --raw-output)
 
 set|grep -E '^(FN_APP_NAME|FN_FUNC_NAME|FN_FUNC_TAG_VALUE|OCI_DOMAIN_NAME|OCI_USERNAME|OCI_BUCKET_NAME_DESTINATION|OCI_COMPARTMENT|OCI_SUBNET|OCI_REPO_NAME|OCI_NAMESPACE|OCI_BUCKET_ROOT_PATH|OCI_REGION|OCI_TENANCY)'
 ```
@@ -279,6 +319,8 @@ config:
  OCI_BUCKET_DESTINATION: ${OCI_BUCKET_NAME_DESTINATION}
  OCI_TENANCY_OCID: ${OCI_TENANCY}
  OCI_BUCKET_ROOT_PATH: ${OCI_BUCKET_ROOT_PATH}
+ # Optional: use only when the destination bucket is in another region.
+ # OCI_BUCKET_DESTINATION_REGION: us-ashburn-1
 EOF
 ```
 
@@ -289,6 +331,13 @@ To ensure the flexibility of the solution, the *function* will use **variables**
 |OCI_BUCKET_DESTINATION |Name of the *Bucket* that will be used to **store the files extracted by the OCI Function**.|
 |OCI_TENANCY_OCID       |The **OCID** (*Oracle Cloud Identifier*) of the *Tenancy*.|
 |OCI_BUCKET_ROOT_PATH   |Name of the "root" folder located in the "Bucket" that will receive the files extracted by the OCI Function.|
+|OCI_BUCKET_DESTINATION_REGION|Optional. Destination bucket region for cross-region copies. If omitted, the Function automatically uses its own execution region (`OCI_RESOURCE_PRINCIPAL_REGION`).|
+
+> [!NOTE]
+> The Function temporarily creates the `.focus-report-exporter.lock` object inside the configured destination root folder. It prevents duplicate copies during concurrent invocations and is considered expired after 15 minutes if an execution is interrupted.
+
+> [!NOTE]
+> The source is listed in full to guarantee synchronization. Source and destination are processed page by page; during the merge, the Function retains at most the current destination object rather than a complete bucket inventory.
 
 #### func.py
 
@@ -303,6 +352,14 @@ mv ~/func.py .
 ```
 
 ### OCI Function: Build
+
+Before deploying, validate the code and unit tests. This command does not require OCI credentials or access any buckets:
+
+```BASH
+python -m unittest -v
+```
+
+The expected result is `OK`. Fix any failing test before continuing with publication.
 
 The next command will perform the following steps:
 
@@ -516,12 +573,23 @@ fn invoke ${FN_APP_NAME} ${FN_FUNC_NAME,,}
 
 This command **invokes the *function** and returns the execution data. The expected result is similar to this:
 
+HTTP `200` means that the Function completed its flow; to confirm a fully synchronized and verifiable result, verify that `erro`, `pending`, `unknown`, `conflict`, and `metadata_incomplete` are all `0` in the JSON. Configuration errors return `400`, an already-running execution returns `409`, and OCI communication failures return `502` or `503`.
+
 ```JSON
 {
   "time": 0.7955700970001089,
   "orig": 1604,
   "dest": 1604,
   "copy": 0,
+  "update": 0,
+  "same": 1604,
+  "pending": 0,
+  "unknown": 0,
+  "conflict": 0,
+  "metadata_incomplete": 0,
+  "source_pages": 2,
+  "destination_pages": 5,
+  "destination_discarded": 3000,
   "erro": 0
 }
 ```
@@ -532,7 +600,16 @@ This command **invokes the *function** and returns the execution data. The expec
 |orig|**Quantity of files** found in the source.|
 |dest|**Quantity of files** already in the destination *bucket*.|
 |copy|**Quantity of new files** successfully copied to the destination *bucket*.|
-|error|**Quantity of files** that had an error during the copy to the destination *bucket*.|
+|update|**Quantity of existing files** copied again because their MD5 or size differed from the source.|
+|same|**Quantity of files** already synchronized, with MD5 and size equal to the source.|
+|pending|**Quantity of copies** still processing after the wait limit.|
+|unknown|**Quantity of copies** whose state could not be queried; they will be checked again on the next run.|
+|conflict|**Quantity of copies** canceled because an ETag detected a concurrent change.|
+|metadata_incomplete|**Quantity of files** without an MD5 available for a complete comparison.|
+|source_pages|**Number of pages** read from the source listing.|
+|destination_pages|**Number of pages** read from the destination listing.|
+|destination_discarded|**Quantity of historical destination objects** discarded during the merge because they do not exist in the source.|
+|erro|**Quantity of files** that had an error during the copy to the destination *bucket*.|
 
 ## Logging
 
