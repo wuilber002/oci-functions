@@ -27,7 +27,7 @@ Toda essa operação é orquestrada através de chamadas diretas à API do OCI, 
 - [**Object Storage**: `get_work_request`](https://docs.oracle.com/en-us/iaas/tools/python/latest/api/object_storage/client/oci.object_storage.ObjectStorageClient.html#oci.object_storage.ObjectStorageClient.get_work_request) para acompanhar as cópias submetidas
 
 Para atualizar uma Function já implantada, consulte o [procedimento de atualização](./fn_update.md).
-
+Para o histórico das mudanças desta versão, consulte o [changelog](./changelog.md).
 <h2>Índice</h2>
 
 - [Requisitos](#requisitos)
